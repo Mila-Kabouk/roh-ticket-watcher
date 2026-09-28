@@ -1,0 +1,45 @@
+{
+  "Seats": [
+    {
+      "ScreenId": 2,
+      "SectionId": 20,
+      "SeatRow": "A",
+      "SeatNumber": 4,
+      "SeatStatusId": 0,
+      "Id": 1004
+    },
+    {
+      "ScreenId": 2,
+      "SectionId": 20,
+      "SeatRow": "A",
+      "SeatNumber": 5,
+      "SeatStatusId": 0,
+      "Id": 1005
+    },
+    {
+      "ScreenId": 2,
+      "SectionId": 20,
+      "SeatRow": "B",
+      "SeatNumber": 100,
+      "SeatStatusId": 0,
+      "Id": 2100
+    },
+    {
+      "ScreenId": 2,
+      "SectionId": 20,
+      "SeatRow": "C",
+      "SeatNumber": 12,
+      "SeatStatusId": 1,
+      "Id": 3012
+    },
+    {
+      "ScreenId": 1,
+      "SectionId": 10,
+      "SeatRow": "A",
+      "SeatNumber": 6,
+      "SeatStatusId": 0,
+      "Id": 4006
+    }
+  ]
+}
+
