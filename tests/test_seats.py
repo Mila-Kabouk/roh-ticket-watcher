@@ -1,7 +1,12 @@
 import pytest
 
 from roh_ticket_watcher.models import Seat
-from roh_ticket_watcher.seats import SeatDataError, adjacent_groups, available_requested_seats
+from roh_ticket_watcher.seats import (
+    SeatDataError,
+    adjacent_groups,
+    available_requested_seats,
+    diagnose_requested_seats,
+)
 
 
 REQUESTED_SEATS = frozenset(
@@ -36,6 +41,41 @@ def test_only_status_zero_is_available_even_for_false_or_missing_values() -> Non
         {"ScreenId": 2, "SeatRow": "A", "SeatNumber": 6},
     ]
     assert available_requested_seats(payload, REQUESTED_SEATS) == set()
+
+
+def test_requested_seat_diagnostics_count_statuses_and_missing_seats() -> None:
+    payload = {
+        "Seats": [
+            {"ScreenId": 2, "SeatRow": "A", "SeatNumber": 4, "SeatStatusId": 0},
+            {"ScreenId": 2, "SeatRow": "A", "SeatNumber": 5, "SeatStatusId": 6},
+            {"ScreenId": 2, "SeatRow": "B", "SeatNumber": 98, "SeatStatusId": 6},
+            {"ScreenId": 1, "SeatRow": "A", "SeatNumber": 6, "SeatStatusId": 0},
+            {"ScreenId": 2, "SeatRow": "Z", "SeatNumber": 99, "SeatStatusId": 0},
+        ]
+    }
+
+    diagnostics = diagnose_requested_seats(payload, REQUESTED_SEATS)
+
+    assert diagnostics.found_count == 3
+    assert diagnostics.status_counts == {0: 1, 6: 2}
+    assert diagnostics.available == {Seat("A", 4)}
+    assert diagnostics.missing == REQUESTED_SEATS - {
+        Seat("A", 4),
+        Seat("A", 5),
+        Seat("B", 98),
+    }
+
+
+def test_conflicting_duplicate_statuses_are_rejected() -> None:
+    payload = {
+        "Seats": [
+            {"ScreenId": 2, "SeatRow": "A", "SeatNumber": 4, "SeatStatusId": 0},
+            {"ScreenId": 2, "SeatRow": "A", "SeatNumber": 4, "SeatStatusId": 6},
+        ]
+    }
+
+    with pytest.raises(SeatDataError, match="conflicting SeatStatusId"):
+        diagnose_requested_seats(payload, REQUESTED_SEATS)
 
 
 def test_adjacent_groups_are_same_row_and_maximal() -> None:

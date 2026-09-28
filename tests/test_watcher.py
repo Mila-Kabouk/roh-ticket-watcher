@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from roh_ticket_watcher.models import MonitoredPerformance, Performance, Production, Seat
@@ -21,12 +22,16 @@ def target(slug: str, name: str, performance_id: int) -> MonitoredPerformance:
 
 
 def payload(*seats: tuple[str, int]) -> dict:
+    available = {Seat(row, number) for row, number in seats}
     records = [
-        {"ScreenId": 2, "SeatRow": row, "SeatNumber": number, "SeatStatusId": 0}
-        for row, number in seats
+        {
+            "ScreenId": 2,
+            "SeatRow": seat.row,
+            "SeatNumber": seat.number,
+            "SeatStatusId": 0 if seat in available else 6,
+        }
+        for seat in sorted(REQUESTED)
     ]
-    if not records:
-        records.append({"ScreenId": 2, "SeatRow": "A", "SeatNumber": 4, "SeatStatusId": 1})
     return {"Seats": records}
 
 
@@ -155,3 +160,47 @@ def test_failed_notification_retains_old_state_for_retry(tmp_path: Path) -> None
     )
     assert len(notifier.messages) == 1
 
+
+def test_logs_compact_requested_seat_diagnostics(
+    tmp_path: Path, caplog
+) -> None:
+    caplog.set_level(logging.INFO)
+    watcher = make_watcher(
+        MutableClient(payload(("A", 4))),
+        RecordingNotifier(),
+        StateStore(tmp_path / "state.json"),
+    )
+
+    watcher.run([target("manon", "Manon", 74500)])
+
+    assert (
+        "Manon | 13 Oct 2026 19:30 | requested found 3/3 | "
+        "statuses: {0: 1, 6: 2} | available: A4"
+    ) in caplog.text
+
+
+def test_missing_requested_seats_are_warned_and_not_treated_as_unavailable(
+    tmp_path: Path, caplog
+) -> None:
+    state = StateStore(tmp_path / "state.json")
+    notifier = RecordingNotifier()
+    client = MutableClient(payload(("A", 4)))
+    watcher = make_watcher(client, notifier, state)
+    performances = [target("manon", "Manon", 74500)]
+
+    watcher.run(performances)
+    assert len(notifier.messages) == 1
+
+    caplog.set_level(logging.WARNING)
+    client.value = {
+        "Seats": [
+            {"ScreenId": 2, "SeatRow": "A", "SeatNumber": 5, "SeatStatusId": 6},
+            {"ScreenId": 2, "SeatRow": "B", "SeatNumber": 100, "SeatStatusId": 6},
+        ]
+    }
+    watcher.run(performances)
+    assert "missing requested seats: A4" in caplog.text
+
+    client.value = payload(("A", 4))
+    watcher.run(performances)
+    assert len(notifier.messages) == 1

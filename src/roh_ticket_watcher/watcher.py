@@ -8,11 +8,27 @@ from typing import Any, Protocol
 from .client import FetchError, SafeStopError
 from .models import MonitoredPerformance, Seat
 from .notification import NotificationError, format_notification
-from .seats import SeatDataError, adjacent_groups, available_requested_seats
+from .seats import SeatDataError, adjacent_groups, diagnose_requested_seats
 from .state import StateStore
 
 
 LOG = logging.getLogger(__name__)
+
+
+def _format_seats(seats: set[Seat] | frozenset[Seat]) -> str:
+    return ", ".join(f"{seat.row}{seat.number}" for seat in sorted(seats)) or "none"
+
+
+def _format_status_counts(counts: dict[int | None, int]) -> str:
+    parts = [
+        f"{status}: {count}"
+        for status, count in sorted(
+            (status, count) for status, count in counts.items() if status is not None
+        )
+    ]
+    if None in counts:
+        parts.append(f"invalid: {counts[None]}")
+    return "{" + ", ".join(parts) + "}"
 
 
 class SeatClient(Protocol):
@@ -78,7 +94,7 @@ class Watcher:
                 continue
 
             try:
-                current = available_requested_seats(
+                diagnostics = diagnose_requested_seats(
                     payload, self.requested_seats, self.screen_id
                 )
             except SeatDataError as exc:
@@ -87,18 +103,37 @@ class Watcher:
                 continue
             result.checked += 1
             previous = set() if self.dry_run else self.state.available_for(target.state_key)
-            newly_available = current - previous
-            groups = adjacent_groups(current)
+            observed_available = set(diagnostics.available)
+            newly_available = observed_available - previous
+            groups = adjacent_groups(observed_available)
+
+            LOG.info(
+                "%s | %s | requested found %d/%d | statuses: %s | available: %s",
+                target.production.name,
+                performance.label,
+                diagnostics.found_count,
+                len(self.requested_seats),
+                _format_status_counts(diagnostics.status_counts),
+                _format_seats(observed_available),
+            )
+            if diagnostics.missing:
+                LOG.warning(
+                    "%s | %s | missing requested seats: %s",
+                    target.production.name,
+                    performance.label,
+                    _format_seats(diagnostics.missing),
+                )
+
             LOG.info(
                 "Performance %s: %d requested seat(s) available; %d new; adjacent=%s",
                 performance.id,
-                len(current),
+                len(observed_available),
                 len(newly_available),
                 bool(groups),
             )
 
             if newly_available:
-                message = format_notification(target, newly_available, current)
+                message = format_notification(target, newly_available, observed_available)
                 if self.dry_run:
                     LOG.info("DRY RUN notification preview:\n%s", message)
                     result.alerts += 1
@@ -114,6 +149,12 @@ class Watcher:
                     result.alerts += 1
 
             if not self.dry_run:
-                self.state.update(target.state_key, current)
+                # A missing record is unknown, not evidence that a previously
+                # available seat became unavailable. Retain that seat's prior
+                # state until it is observed again with an explicit status.
+                retained_missing = previous & set(diagnostics.missing)
+                self.state.update(
+                    target.state_key, observed_available | retained_missing
+                )
                 self.state.save()
         return result

@@ -207,6 +207,12 @@ Notifications identify the production, performance date/time and ID, new seats,
 all currently available requested seats, whether an adjacent option exists, the
 production URL, and the direct booking link.
 
+Each successful performance check also logs a compact requested-seat diagnostic:
+the number found versus expected, counts by `SeatStatusId`, and the exact seats
+whose status is `0`. Missing requested-seat records produce a warning naming the
+seats and are treated as unknown, not unavailable. Raw RBO responses are not
+retained.
+
 State is written atomically to `data/state.json`, keyed by production and
 performance. Unchanged availability does not repeat. A disappearance updates
 state, so a later reappearance alerts again. If Telegram delivery fails, old
