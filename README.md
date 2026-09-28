@@ -184,8 +184,7 @@ roh-ticket-watcher watch \
 
 ## Telegram and normal operation
 
-Telegram has intentionally not been configured. When ready later, copy
-`.env.example` to `.env` and set:
+For local operation, copy `.env.example` to `.env` and set:
 
 ```text
 TELEGRAM_BOT_TOKEN=...
@@ -222,8 +221,25 @@ roh-ticket-watcher watch
 ```
 
 approximately every 10–15 minutes. There is deliberately no internal polling
-loop. Cloud deployment and Telegram configuration are not included or activated
-yet; they can be added after configuration review.
+loop.
+
+The included GitHub Actions workflow (`.github/workflows/watch.yml`) runs one
+read-only sweep at minutes 7, 22, 37, and 52 of every hour. It can also be run
+manually from the repository's **Actions** tab. GitHub may start scheduled jobs
+slightly late during busy periods.
+
+Before enabling it, add these two repository secrets under **Settings → Secrets
+and variables → Actions**:
+
+```text
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID
+```
+
+The workflow restores and saves `data/state.json` using the GitHub Actions cache.
+This preserves transition history between temporary cloud runners, so unchanged
+availability does not repeatedly alert. The local `.env` file and its secrets
+are ignored by Git and are never uploaded.
 
 ## Important command summary
 
